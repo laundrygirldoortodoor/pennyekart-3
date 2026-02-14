@@ -1,12 +1,6 @@
-import { useState } from "react";
 import logo from "@/assets/logo.png";
-import { ShoppingBag, UtensilsCrossed, Wrench } from "lucide-react";
-
-const platforms = [
-  { id: "pennyekart", label: "Pennyekart", icon: ShoppingBag, logo: true },
-  { id: "pennycarbs", label: "Penny Carbs", icon: UtensilsCrossed, logo: false },
-  { id: "pennyservices", label: "Penny Services", icon: Wrench, logo: false },
-];
+import carbsLogo from "@/assets/carbs-logo.png";
+import { Wrench } from "lucide-react";
 
 interface Props {
   selected: string;
@@ -15,26 +9,45 @@ interface Props {
 
 const PlatformSelector = ({ selected, onSelect }: Props) => (
   <div className="bg-primary">
-    <div className="container flex items-center gap-2 overflow-x-auto py-2 scrollbar-hide">
-      {platforms.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => onSelect(p.id)}
-          className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-            selected === p.id
-              ? "bg-card text-foreground shadow-sm"
-              : "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
-          }`}
-        >
-          {p.logo ? (
-            <img src={logo} alt={p.label} className="h-5" />
-          ) : (
-            <p.icon className="h-4 w-4" />
-          )}
-          <span className="hidden sm:inline">{p.label}</span>
-          <span className="sm:hidden">{p.label.split(" ").pop()}</span>
-        </button>
-      ))}
+    <div className="container flex items-center justify-between gap-1 py-2 sm:gap-2">
+      {/* Pennyekart */}
+      <button
+        onClick={() => onSelect("pennyekart")}
+        className={`flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:gap-2 sm:px-4 sm:py-2 sm:text-sm ${
+          selected === "pennyekart"
+            ? "bg-card text-foreground shadow-sm"
+            : "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+        }`}
+      >
+        <img src={logo} alt="Pennyekart" className="h-4 shrink-0 sm:h-5" />
+        <span className="whitespace-nowrap">Pennyekart</span>
+      </button>
+
+      {/* Penny Carbs */}
+      <button
+        onClick={() => onSelect("pennycarbs")}
+        className={`flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:gap-2 sm:px-4 sm:py-2 sm:text-sm ${
+          selected === "pennycarbs"
+            ? "bg-card text-foreground shadow-sm"
+            : "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+        }`}
+      >
+        <img src={carbsLogo} alt="Penny Carbs" className="h-4 shrink-0 sm:h-5" />
+        <span className="whitespace-nowrap">Carbs</span>
+      </button>
+
+      {/* Penny Services */}
+      <button
+        onClick={() => onSelect("pennyservices")}
+        className={`flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:gap-2 sm:px-4 sm:py-2 sm:text-sm ${
+          selected === "pennyservices"
+            ? "bg-card text-foreground shadow-sm"
+            : "bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
+        }`}
+      >
+        <Wrench className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+        <span className="whitespace-nowrap">Services</span>
+      </button>
     </div>
   </div>
 );
