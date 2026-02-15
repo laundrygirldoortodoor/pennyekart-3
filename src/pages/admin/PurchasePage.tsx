@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShoppingCart, Plus, Trash2, Send, History } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ShoppingCart, Plus, Trash2, Send, History, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Product {
@@ -48,6 +49,8 @@ interface StockHistory {
   batch_number: string | null;
   expiry_date: string | null;
   created_at: string;
+  godown_id: string;
+  product_id: string;
   godown_name: string;
   product_name: string;
 }
@@ -65,15 +68,33 @@ const PurchasePage = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [historyGodownFilter, setHistoryGodownFilter] = useState("all");
+
+  // Edit dialog state
+  const [editItem, setEditItem] = useState<StockHistory | null>(null);
+  const [editQty, setEditQty] = useState(0);
+  const [editPrice, setEditPrice] = useState(0);
+  const [editBatch, setEditBatch] = useState("");
+  const [editExpiry, setEditExpiry] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Delete dialog state
+  const [deleteItem, setDeleteItem] = useState<StockHistory | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // All godowns for filter (local + others)
+  const [allGodowns, setAllGodowns] = useState<Godown[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [prodRes, gdRes] = await Promise.all([
+      const [prodRes, gdRes, allGdRes] = await Promise.all([
         supabase.from("products").select("id, name, price, category, purchase_rate, mrp, discount_rate").eq("is_active", true).order("name"),
         supabase.from("godowns").select("*").eq("godown_type", "local").eq("is_active", true).order("name"),
+        supabase.from("godowns").select("*").eq("is_active", true).order("name"),
       ]);
       if (prodRes.data) setProducts(prodRes.data as Product[]);
       if (gdRes.data) setLocalGodowns(gdRes.data as Godown[]);
+      if (allGdRes.data) setAllGodowns(allGdRes.data as Godown[]);
     };
     fetchData();
   }, []);
@@ -134,7 +155,6 @@ const PurchasePage = () => {
 
     setSubmitting(true);
 
-    // Update MRP on products where it was changed
     const mrpUpdates = validItems.filter(i => i.mrp_changed);
     for (const item of mrpUpdates) {
       await supabase.from("products").update({ mrp: item.mrp }).eq("id", item.product_id);
@@ -160,7 +180,6 @@ const PurchasePage = () => {
       toast({ title: `Stock added to ${selectedGodownIds.length} godown(s) — ${validItems.length} product(s)` });
       setItems([]);
       setSelectedGodownIds([]);
-      // Refresh products to get updated MRPs
       if (mrpUpdates.length > 0) {
         const { data } = await supabase.from("products").select("id, name, price, category, purchase_rate, mrp, discount_rate").eq("is_active", true).order("name");
         if (data) setProducts(data as Product[]);
@@ -178,6 +197,9 @@ const PurchasePage = () => {
 
     if (dateFrom) query = query.gte("created_at", dateFrom);
     if (dateTo) query = query.lte("created_at", dateTo + "T23:59:59");
+    if (historyGodownFilter && historyGodownFilter !== "all") {
+      query = query.eq("godown_id", historyGodownFilter);
+    }
 
     const { data } = await query;
     if (data) {
@@ -188,12 +210,55 @@ const PurchasePage = () => {
         batch_number: row.batch_number,
         expiry_date: row.expiry_date,
         created_at: row.created_at,
-        godown_name: localGodowns.find(g => g.id === row.godown_id)?.name ?? row.godown_id,
+        godown_id: row.godown_id,
+        product_id: row.product_id,
+        godown_name: allGodowns.find(g => g.id === row.godown_id)?.name ?? row.godown_id,
         product_name: products.find(p => p.id === row.product_id)?.name ?? row.product_id,
       }));
       setHistory(mapped);
     }
     setHistoryLoading(false);
+  };
+
+  const openEdit = (h: StockHistory) => {
+    setEditItem(h);
+    setEditQty(h.quantity);
+    setEditPrice(h.purchase_price);
+    setEditBatch(h.batch_number ?? "");
+    setEditExpiry(h.expiry_date ?? "");
+  };
+
+  const handleEditSave = async () => {
+    if (!editItem) return;
+    setEditSaving(true);
+    const { error } = await supabase.from("godown_stock").update({
+      quantity: editQty,
+      purchase_price: editPrice,
+      batch_number: editBatch || null,
+      expiry_date: editExpiry || null,
+    }).eq("id", editItem.id);
+    setEditSaving(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Stock entry updated" });
+      setEditItem(null);
+      fetchHistory();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
+    const { error } = await supabase.from("godown_stock").delete().eq("id", deleteItem.id);
+    setDeleting(false);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Stock entry deleted" });
+      setDeleteItem(null);
+      setHistory(prev => prev.filter(h => h.id !== deleteItem.id));
+    }
   };
 
   return (
@@ -368,6 +433,18 @@ const PurchasePage = () => {
                     <Label className="text-xs">To</Label>
                     <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
                   </div>
+                  <div>
+                    <Label className="text-xs">Godown</Label>
+                    <Select value={historyGodownFilter} onValueChange={setHistoryGodownFilter}>
+                      <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Godowns" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Godowns</SelectItem>
+                        {allGodowns.map(g => (
+                          <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button size="sm" onClick={fetchHistory} disabled={historyLoading}>
                     {historyLoading ? "Loading..." : "Search"}
                   </Button>
@@ -385,6 +462,7 @@ const PurchasePage = () => {
                           <TableHead>Purchase Price</TableHead>
                           <TableHead>Batch</TableHead>
                           <TableHead>Expiry</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -397,6 +475,16 @@ const PurchasePage = () => {
                             <TableCell>₹{h.purchase_price}</TableCell>
                             <TableCell className="text-xs">{h.batch_number ?? "—"}</TableCell>
                             <TableCell className="text-xs">{h.expiry_date ?? "—"}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(h)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteItem(h)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -412,6 +500,60 @@ const PurchasePage = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editItem} onOpenChange={(open) => !open && setEditItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Stock Entry</DialogTitle>
+          </DialogHeader>
+          {editItem && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{editItem.product_name} → {editItem.godown_name}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Quantity</Label>
+                  <Input type="number" min={1} value={editQty} onChange={e => setEditQty(parseInt(e.target.value) || 0)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Purchase Price</Label>
+                  <Input type="number" min={0} step="0.01" value={editPrice} onChange={e => setEditPrice(parseFloat(e.target.value) || 0)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Batch No.</Label>
+                  <Input value={editBatch} onChange={e => setEditBatch(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Expiry</Label>
+                  <Input type="date" value={editExpiry} onChange={e => setEditExpiry(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditItem(null)}>Cancel</Button>
+            <Button onClick={handleEditSave} disabled={editSaving}>{editSaving ? "Saving..." : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Stock Entry</DialogTitle>
+          </DialogHeader>
+          {deleteItem && (
+            <p className="text-sm">Are you sure you want to delete <strong>{deleteItem.product_name}</strong> ({deleteItem.quantity} units) from <strong>{deleteItem.godown_name}</strong>?</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteItem(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>{deleting ? "Deleting..." : "Delete"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 };
