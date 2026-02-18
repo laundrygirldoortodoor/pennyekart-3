@@ -145,7 +145,16 @@ const SellingPartnerDashboard = () => {
 
   const fetchWallet = async () => {
     if (!user) return;
-    const { data: wallet } = await supabase.from("seller_wallets").select("*").eq("seller_id", user.id).maybeSingle();
+    let { data: wallet } = await supabase.from("seller_wallets").select("*").eq("seller_id", user.id).maybeSingle();
+    // Auto-create wallet if it doesn't exist
+    if (!wallet) {
+      const { data: newWallet } = await supabase
+        .from("seller_wallets")
+        .insert({ seller_id: user.id, balance: 0 })
+        .select()
+        .single();
+      wallet = newWallet;
+    }
     if (wallet) {
       setWalletBalance(wallet.balance);
       const { data: txns } = await supabase.from("seller_wallet_transactions").select("*").eq("wallet_id", wallet.id).order("created_at", { ascending: false }).limit(100);

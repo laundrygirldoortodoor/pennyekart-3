@@ -176,7 +176,17 @@ const SellingPartnersPage = () => {
   const openWallet = async (partner: SellingPartner) => {
     setWalletPartner(partner);
     setSettleAmount("");
-    const { data: wallet } = await supabase.from("seller_wallets").select("*").eq("seller_id", partner.user_id).maybeSingle();
+    setWalletInfo(null);
+    let { data: wallet } = await supabase.from("seller_wallets").select("*").eq("seller_id", partner.user_id).maybeSingle();
+    // Auto-create wallet if it doesn't exist
+    if (!wallet) {
+      const { data: newWallet } = await supabase
+        .from("seller_wallets")
+        .insert({ seller_id: partner.user_id, balance: 0 })
+        .select()
+        .single();
+      wallet = newWallet;
+    }
     if (!wallet) {
       setWalletInfo({ balance: 0, transactions: [] });
       return;
